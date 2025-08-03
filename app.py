@@ -33,7 +33,12 @@ templates = Jinja2Templates(directory="templates")
 clients = set()
 
 BLOCKFROST_API_KEY = os.getenv("BLOCKFROST_API_KEY")
-api = BlockFrostApi(project_id=BLOCKFROST_API_KEY, base_url=ApiUrls.preprod.value)
+if not BLOCKFROST_API_KEY:
+    print("❌ WARNING: BLOCKFROST_API_KEY not found in environment variables")
+    print("   Please set BLOCKFROST_API_KEY in your Render dashboard")
+    api = None
+else:
+    api = BlockFrostApi(project_id=BLOCKFROST_API_KEY, base_url=ApiUrls.preprod.value)
 
 # Determine sea creature type
 def classify_creature(ada_amount):
@@ -56,6 +61,8 @@ def classify_creature(ada_amount):
 
 # Fetch address info with ADA
 async def fetch_address_info(address):
+    if not api:
+        return {"address": address, "ada": 100, "type": "fish"}  # Default fallback
     try:
         info = api.address(address)
         ada = 0
@@ -158,6 +165,8 @@ async def homepage(request: Request):
 
 @app.get("/latest")
 async def latest_block():
+    if not api:
+        return {"height": 3744495}  # Fallback block number
     try:
         # Get the actual latest block from Blockfrost API
         latest_block = api.block_latest()
@@ -169,6 +178,8 @@ async def latest_block():
 
 @app.get("/block/{height}")
 async def get_block(height: int):
+    if not api:
+        return {"error": "API not configured - please set BLOCKFROST_API_KEY"}
     try:
         block = api.block(height)
         print(f"📦 Querying block {height}")
