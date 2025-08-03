@@ -163,21 +163,6 @@ async def homepage(request: Request):
         print(f"Error rendering homepage: {e}")
         return HTMLResponse(f"<h1>Error loading page: {e}</h1><p>Check server logs for details.</p>")
 
-@app.get("/debug/files")
-async def debug_files():
-    """Debug endpoint to see what files are actually deployed"""
-    import os
-    files = []
-    try:
-        for root, dirs, filenames in os.walk("resources/images"):
-            for filename in filenames:
-                filepath = os.path.join(root, filename)
-                size = os.path.getsize(filepath)
-                files.append({"path": filepath, "size": size})
-    except Exception as e:
-        return {"error": str(e)}
-    return {"files": files}
-
 @app.get("/latest")
 async def latest_block():
     if not api:
