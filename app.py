@@ -143,7 +143,11 @@ async def websocket_endpoint(ws: WebSocket):
 
 @app.get("/")
 async def homepage(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    try:
+        return templates.TemplateResponse("index.html", {"request": request})
+    except Exception as e:
+        print(f"Error rendering homepage: {e}")
+        return HTMLResponse(f"<h1>Error loading page: {e}</h1><p>Check server logs for details.</p>")
 
 @app.get("/latest")
 async def latest_block():
