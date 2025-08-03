@@ -1,8 +1,9 @@
 import os
 import asyncio
 from fastapi import FastAPI, WebSocket, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+import mimetypes
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from blockfrost import BlockFrostApi, ApiUrls, ApiError
@@ -12,6 +13,12 @@ import uvicorn
 
 
 load_dotenv()
+
+# Set up proper MIME types
+mimetypes.init()
+mimetypes.add_type('application/javascript', '.js')
+mimetypes.add_type('text/css', '.css')
+mimetypes.add_type('video/mp4', '.mp4')
 
 app = FastAPI()
 app.add_middleware(
