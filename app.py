@@ -1,6 +1,6 @@
 import os
 import asyncio
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -142,8 +142,8 @@ async def websocket_endpoint(ws: WebSocket):
         clients.remove(ws)
 
 @app.get("/")
-async def homepage():
-    return HTMLResponse(open("templates/index.html").read())
+async def homepage(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/latest")
 async def latest_block():
