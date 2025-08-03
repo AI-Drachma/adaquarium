@@ -21,6 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/resources", StaticFiles(directory="resources"), name="resources")
 templates = Jinja2Templates(directory="templates")
 clients = set()
 
@@ -146,7 +147,14 @@ async def homepage():
 
 @app.get("/latest")
 async def latest_block():
-    return latest_block_data if latest_block_data else {}
+    try:
+        # Get the actual latest block from Blockfrost API
+        latest_block = api.block_latest()
+        return {"height": latest_block.height}
+    except Exception as e:
+        print(f"❌ Error fetching latest block from API: {e}")
+        # Return the cached data if available, otherwise empty
+        return latest_block_data if latest_block_data else {}
 
 @app.get("/block/{height}")
 async def get_block(height: int):
@@ -177,18 +185,49 @@ async def get_block(height: int):
                 for o in utxos.outputs:
                     receiver_addresses.add(o.address)
                 
-                # Store addresses with their role (sender/receiver)
+                # Store addresses with their role (sender/receiver) and counterparty info
                 sender_list = list(sender_addresses)
                 receiver_list = list(receiver_addresses)
                 
-                for addr in sender_list:
-                    if addr not in address_tx_map:
-                        address_tx_map[addr] = {"tx_id": tx, "amount": total_output, "role": "sender"}
+                # Process all addresses and track their roles
+                all_addresses = sender_addresses.union(receiver_addresses)
                 
-                # For receivers, use different addresses than senders when possible
-                for addr in receiver_list:
+                for addr in all_addresses:
                     if addr not in address_tx_map:
-                        address_tx_map[addr] = {"tx_id": tx, "amount": total_output, "role": "receiver"}
+                        address_tx_map[addr] = {
+                            "tx_id": tx,
+                            "amount": total_output,
+                            "roles": [],
+                            "sent_to": [],
+                            "received_from": []
+                        }
+                    
+                    # Check if this address only transacts with itself
+                    sent_to_others = [r for r in receiver_list if r != addr]
+                    received_from_others = [s for s in sender_list if s != addr]
+                    
+                    # Special case: only self-transactions
+                    if addr in sender_addresses and addr in receiver_addresses and not sent_to_others and not received_from_others:
+                        if "self" not in address_tx_map[addr]["roles"]:
+                            address_tx_map[addr]["roles"].append("self")
+                    else:
+                        # Add sender role and recipients
+                        if addr in sender_addresses and sent_to_others:
+                            if "sender" not in address_tx_map[addr]["roles"]:
+                                address_tx_map[addr]["roles"].append("sender")
+                            # Add receivers as "sent to" (excluding self)
+                            for receiver_addr in sent_to_others:
+                                if receiver_addr not in address_tx_map[addr]["sent_to"]:
+                                    address_tx_map[addr]["sent_to"].append(receiver_addr)
+                        
+                        # Add receiver role and senders (only if receiving from different addresses)
+                        if addr in receiver_addresses and received_from_others:
+                            if "receiver" not in address_tx_map[addr]["roles"]:
+                                address_tx_map[addr]["roles"].append("receiver")
+                            # Add senders as "received from" (excluding self)
+                            for sender_addr in received_from_others:
+                                if sender_addr not in address_tx_map[addr]["received_from"]:
+                                    address_tx_map[addr]["received_from"].append(sender_addr)
             except Exception as tx_error:
                 print(f"Error processing transaction {tx}: {tx_error}")
                 continue
@@ -201,7 +240,40 @@ async def get_block(height: int):
                 info['y'] = int(10 + 80 * os.urandom(1)[0] / 255)
                 info['transaction_id'] = address_tx_map[addr]["tx_id"]
                 info['amount_transferred'] = address_tx_map[addr]["amount"]
-                info['role'] = address_tx_map[addr]["role"]
+                
+                # Set role based on what roles this address has
+                roles = address_tx_map[addr]["roles"]
+                if len(roles) == 1:
+                    info['role'] = roles[0]
+                elif len(roles) > 1:
+                    info['role'] = "/".join(sorted(roles))  # "receiver/sender" or "sender/receiver"
+                else:
+                    info['role'] = "unknown"
+                
+                # Get info about addresses they sent to
+                sent_to_info = []
+                for sent_addr in address_tx_map[addr]["sent_to"][:3]:  # Limit to first 3
+                    sent_data = await fetch_address_info(sent_addr)
+                    if sent_data:
+                        sent_to_info.append({
+                            'address': sent_addr,
+                            'ada': sent_data['ada'],
+                            'type': sent_data['type']
+                        })
+                info['sent_to_info'] = sent_to_info
+                
+                # Get info about addresses they received from
+                received_from_info = []
+                for received_addr in address_tx_map[addr]["received_from"][:3]:  # Limit to first 3
+                    received_data = await fetch_address_info(received_addr)
+                    if received_data:
+                        received_from_info.append({
+                            'address': received_addr,
+                            'ada': received_data['ada'],
+                            'type': received_data['type']
+                        })
+                info['received_from_info'] = received_from_info
+                
                 creatures.append(info)
         
         print(f"Created {len(creatures)} creatures:")
