@@ -1,0 +1,216 @@
+import os
+import asyncio
+from fastapi import FastAPI, WebSocket
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
+from blockfrost import BlockFrostApi, ApiUrls, ApiError
+from dotenv import load_dotenv
+from datetime import datetime
+import uvicorn
+
+
+load_dotenv()
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
+clients = set()
+
+BLOCKFROST_API_KEY = os.getenv("BLOCKFROST_API_KEY")
+api = BlockFrostApi(project_id=BLOCKFROST_API_KEY, base_url=ApiUrls.preprod.value)
+
+# Determine sea creature type
+def classify_creature(ada_amount):
+    if ada_amount < 100:
+        return "shrimp"
+    elif ada_amount < 1000:
+        return "crab"
+    elif ada_amount < 3000:
+        return "octopus"
+    elif ada_amount < 10000:
+        return "fish"
+    elif ada_amount < 40000:
+        return "tuna"
+    elif ada_amount < 100000:
+        return "dolphin"
+    elif ada_amount < 300000:
+        return "shark"
+    else:
+        return "whale"
+
+# Fetch address info with ADA
+async def fetch_address_info(address):
+    try:
+        info = api.address(address)
+        ada = 0
+        for a in info.amount:
+            if a.unit == 'lovelace':
+                ada += int(a.quantity)
+        ada = ada / 1_000_000
+        return {"address": address, "ada": ada, "type": classify_creature(ada)}
+    except ApiError as e:
+        print(f"Error fetching address {address}: {e}")
+        return None
+
+# Disabled automatic polling since we're using search mode only
+# @app.on_event("startup")
+# async def start_polling():
+#     print("🟢 Polling started")
+#     asyncio.create_task(poll_chain())
+
+latest_block_data = None
+
+async def poll_chain():
+    global latest_block_data
+    last_sent_height = None
+
+    while True:
+        try:
+            latest_block = api.block_latest()
+            current_height = latest_block.height
+        except Exception as e:
+            print("❌ Failed to fetch latest block:", e)
+            await asyncio.sleep(10)
+            continue
+
+        if last_sent_height is None or current_height > last_sent_height:
+            blocks_data = []
+            for height in range(current_height - 2, current_height + 1):
+                try:
+                    block = api.block(height)
+                    print(f"📦 Processing block {height}")
+                    txs = api.block_transactions(block.hash)
+                    address_tx_map = {}
+                    for tx in txs:
+                        try:
+                            utxos = api.transaction_utxos(tx)
+                            # Calculate total output more safely
+                            total_output = 0
+                            for o in utxos.outputs:
+                                for amount in o.amount:
+                                    if amount.unit == 'lovelace':
+                                        total_output += int(amount.quantity)
+                            total_output = total_output / 1_000_000
+                            
+                            for i in utxos.inputs:
+                                if i.address not in address_tx_map:
+                                    address_tx_map[i.address] = {"tx_id": tx, "amount": total_output}
+                        except:
+                            continue
+                    creatures = []
+                    for addr in list(address_tx_map.keys())[:5]:
+                        info = await fetch_address_info(addr)
+                        if info:
+                            info['y'] = int(10 + 80 * os.urandom(1)[0] / 255)
+                            info['transaction_id'] = address_tx_map[addr]["tx_id"]
+                            info['amount_transferred'] = address_tx_map[addr]["amount"]
+                            creatures.append(info)
+                    blocks_data.append({"height": height, "creatures": creatures})
+                except Exception as e:
+                    print("❌ Error during block parsing:", e)
+
+            if blocks_data:
+                latest_block_data = blocks_data[-1]
+                for ws in clients.copy():
+                    try:
+                        await ws.send_json({"blocks": blocks_data})
+                    except:
+                        clients.remove(ws)
+
+            last_sent_height = current_height
+
+        await asyncio.sleep(10)
+
+@app.websocket("/ws")
+async def websocket_endpoint(ws: WebSocket):
+    await ws.accept()
+    clients.add(ws)
+    print("🔌 WebSocket connected")
+    try:
+        while True:
+            await ws.receive_text()
+    except:
+        clients.remove(ws)
+
+@app.get("/")
+async def homepage():
+    return HTMLResponse(open("templates/index.html").read())
+
+@app.get("/latest")
+async def latest_block():
+    return latest_block_data if latest_block_data else {}
+
+@app.get("/block/{height}")
+async def get_block(height: int):
+    try:
+        block = api.block(height)
+        print(f"📦 Querying block {height}")
+        txs = api.block_transactions(block.hash)
+        print(f"Found {len(txs)} transactions in block {height}")
+        
+        address_tx_map = {}
+        for tx in txs:
+            try:
+                utxos = api.transaction_utxos(tx)
+                # Calculate total output more safely
+                total_output = 0
+                for o in utxos.outputs:
+                    for amount in o.amount:
+                        if amount.unit == 'lovelace':
+                            total_output += int(amount.quantity)
+                total_output = total_output / 1_000_000
+                
+                # Collect sender and receiver addresses separately
+                sender_addresses = set()
+                receiver_addresses = set()
+                
+                for i in utxos.inputs:
+                    sender_addresses.add(i.address)
+                for o in utxos.outputs:
+                    receiver_addresses.add(o.address)
+                
+                # Store addresses with their role (sender/receiver)
+                sender_list = list(sender_addresses)
+                receiver_list = list(receiver_addresses)
+                
+                for addr in sender_list:
+                    if addr not in address_tx_map:
+                        address_tx_map[addr] = {"tx_id": tx, "amount": total_output, "role": "sender"}
+                
+                # For receivers, use different addresses than senders when possible
+                for addr in receiver_list:
+                    if addr not in address_tx_map:
+                        address_tx_map[addr] = {"tx_id": tx, "amount": total_output, "role": "receiver"}
+            except Exception as tx_error:
+                print(f"Error processing transaction {tx}: {tx_error}")
+                continue
+                
+        print(f"Found {len(address_tx_map)} unique addresses")
+        creatures = []
+        for addr in list(address_tx_map.keys()):
+            info = await fetch_address_info(addr)
+            if info:
+                info['y'] = int(10 + 80 * os.urandom(1)[0] / 255)
+                info['transaction_id'] = address_tx_map[addr]["tx_id"]
+                info['amount_transferred'] = address_tx_map[addr]["amount"]
+                info['role'] = address_tx_map[addr]["role"]
+                creatures.append(info)
+        
+        print(f"Created {len(creatures)} creatures:")
+        for creature in creatures:
+            print(f"  - {creature['type']} with {creature['ada']:.2f} ADA ({creature['role']})")
+        return {"height": height, "creatures": creatures}
+    except Exception as e:
+        print(f"❌ Error querying block {height}:", e)
+        return {"error": f"Block {height} not found"}
+
+if __name__ == "__main__":
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
