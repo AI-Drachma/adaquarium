@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+blockfrost-python
+python-dotenv
+jinja2
+python-multipart
