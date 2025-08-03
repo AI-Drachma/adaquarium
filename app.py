@@ -29,6 +29,18 @@ app.add_middleware(
 )
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/resources", StaticFiles(directory="resources"), name="resources")
+
+# Alternative route for serving images directly if static mounting fails
+@app.get("/resources/images/{filename}")
+async def serve_image(filename: str):
+    import os
+    from fastapi.responses import FileResponse
+    
+    file_path = os.path.join("resources", "images", filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    else:
+        return {"error": "File not found"}
 templates = Jinja2Templates(directory="templates")
 clients = set()
 
