@@ -29,18 +29,6 @@ app.add_middleware(
 )
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/resources", StaticFiles(directory="resources"), name="resources")
-
-# Alternative route for serving images directly if static mounting fails
-@app.get("/resources/images/{filename}")
-async def serve_image(filename: str):
-    import os
-    from fastapi.responses import FileResponse
-    
-    file_path = os.path.join("resources", "images", filename)
-    if os.path.exists(file_path):
-        return FileResponse(file_path)
-    else:
-        return {"error": "File not found"}
 templates = Jinja2Templates(directory="templates")
 clients = set()
 
@@ -317,6 +305,19 @@ async def get_block(height: int):
     except Exception as e:
         print(f"❌ Error querying block {height}:", e)
         return {"error": f"Block {height} not found"}
+
+# Alternative route for serving images if static mounting fails on some platforms
+@app.get("/img/{filename}")
+async def serve_image_fallback(filename: str):
+    """Fallback image serving endpoint"""
+    import os
+    from fastapi.responses import FileResponse
+    
+    file_path = os.path.join("resources", "images", filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    else:
+        return {"error": f"Image {filename} not found"}
 
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
