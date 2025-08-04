@@ -58,6 +58,32 @@
       width: 80px;
       height: auto;
     }
+    #network-toggle {
+      position: absolute;
+      top: 10px;
+      right: 20px;
+      background: rgba(255, 255, 255, 0.9);
+      border: 2px solid #4CAF50;
+      color: #333;
+      padding: 8px 16px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 14px;
+      z-index: 11;
+      transition: all 0.3s ease;
+    }
+    #network-toggle:hover {
+      background: #4CAF50;
+      color: white;
+      transform: scale(1.05);
+    }
+    #network-toggle.mainnet {
+      border-color: #ff6b6b;
+    }
+    #network-toggle.mainnet:hover {
+      background: #ff6b6b;
+    }
     #search-controls {
       position: absolute;
       bottom: 20px;
@@ -154,7 +180,7 @@
     }
     #info-panel-header {
       position: absolute;
-      top: 15px;
+      top: 40px;
       left: 50%;
       transform: translateX(-50%);
       color: white;
@@ -279,6 +305,7 @@
     <img src="/resources/images/logo.png" alt="Drachma Forge" />
   </button>
   <button id="pause-btn">⏸</button>
+  <button id="network-toggle" onclick="toggleNetwork()">preprod</button>
   <div id="info-panel">
     <div id="info-panel-header">Wallet Info</div>
     <div id="info-content"></div>
