@@ -845,10 +845,10 @@ function fetchSearchBlock() {
             baseSize = 120; // (40000-100000 ADA) - bigger than tuna
             scaleFactor = Math.max(1, Math.min((ada - 40000) / 30000 + 1, 2.2)); // 1x to 2.2x
           } else if (type === "shark") {
-            baseSize = 180; // (100000-300000 ADA) - larger than dolphins, smaller than whales
+            baseSize = 120; // (100000-300000 ADA) - larger than dolphins, smaller than whales
             scaleFactor = Math.max(1, Math.min((ada - 100000) / 100000 + 1, 2.5)); // 1x to 2.5x
           } else { // whale
-            baseSize = 350; // (300000+ ADA) - largest creatures
+            baseSize = 120; // (300000+ ADA) - largest creatures
             scaleFactor = Math.max(1, Math.min((ada - 300000) / 200000 + 1, 3)); // 1x to 3x
           }
           
