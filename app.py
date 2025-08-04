@@ -155,7 +155,7 @@ async def websocket_endpoint(ws: WebSocket):
     except:
         clients.remove(ws)
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 async def homepage(request: Request):
     try:
         return templates.TemplateResponse("index.html", {"request": request})
