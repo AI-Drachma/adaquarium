@@ -1187,4 +1187,125 @@ document.onclick = (e) => {
   console.log("Click detected but creatures continue horizontal swimming");
 };
 
+// Network toggle functionality
+let currentNetwork = 'preprod';
+
+async function toggleNetwork() {
+  const button = document.getElementById('network-toggle');
+  const targetNetwork = currentNetwork === 'preprod' ? 'mainnet' : 'preprod';
+  
+  // Disable button during switch
+  button.disabled = true;
+  button.textContent = 'switching...';
+  
+  try {
+    // Call backend API to switch networks
+    const response = await fetch('/switch-network', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({network: targetNetwork})
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      // Update frontend state
+      currentNetwork = result.network;
+      button.textContent = currentNetwork;
+      
+      if (currentNetwork === 'mainnet') {
+        button.classList.add('mainnet');
+      } else {
+        button.classList.remove('mainnet');
+      }
+      
+      showNetworkNotification(currentNetwork);
+      
+      // Clear any existing creatures since we're on a different network
+      clearAllCreatures();
+      
+      console.log(`✅ Network switched to: ${currentNetwork}`);
+    } else {
+      throw new Error(result.error || 'Network switch failed');
+    }
+  } catch (error) {
+    console.error('❌ Network switch failed:', error);
+    showNetworkNotification('error', `Failed to switch to ${targetNetwork}`);
+    
+    // Reset button to current state
+    button.textContent = currentNetwork;
+    if (currentNetwork === 'mainnet') {
+      button.classList.add('mainnet');
+    } else {
+      button.classList.remove('mainnet');
+    }
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function clearAllCreatures() {
+  // Remove all existing creatures from the aquarium
+  const creatures = document.querySelectorAll('.creature');
+  creatures.forEach(creature => {
+    if (creature.parentNode) {
+      creature.parentNode.removeChild(creature);
+    }
+  });
+  
+  // Clear creature arrays/objects if they exist
+  if (typeof allCreatures !== 'undefined') {
+    allCreatures.length = 0;
+  }
+  
+  console.log('🧹 Cleared all creatures for network switch');
+}
+
+function showNetworkNotification(network, customMessage = null) {
+  // Create notification element
+  const notification = document.createElement('div');
+  
+  let backgroundColor, message;
+  if (network === 'error') {
+    backgroundColor = '#ff4444';
+    message = customMessage || 'Network switch failed';
+  } else {
+    backgroundColor = network === 'mainnet' ? '#ff6b6b' : '#4CAF50';
+    message = customMessage || `Switched to ${network.toUpperCase()}`;
+  }
+  
+  notification.style.cssText = `
+    position: fixed;
+    top: 50px;
+    right: 20px;
+    background: ${backgroundColor};
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-weight: bold;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  `;
+  notification.textContent = message;
+  
+  document.body.appendChild(notification);
+  
+  // Fade in
+  setTimeout(() => notification.style.opacity = '1', 10);
+  
+  // Fade out and remove
+  setTimeout(() => {
+    notification.style.opacity = '0';
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.parentNode.removeChild(notification);
+      }
+    }, 300);
+  }, network === 'error' ? 4000 : 2000); // Show errors longer
+}
+
 animate();

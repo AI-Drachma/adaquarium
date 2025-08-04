@@ -32,13 +32,35 @@ app.mount("/resources", StaticFiles(directory="resources"), name="resources")
 templates = Jinja2Templates(directory="templates")
 clients = set()
 
-BLOCKFROST_API_KEY = os.getenv("BLOCKFROST_API_KEY")
-if not BLOCKFROST_API_KEY:
-    print("❌ WARNING: BLOCKFROST_API_KEY not found in environment variables")
-    print("   Please set BLOCKFROST_API_KEY in your Render dashboard")
+BLOCKFROST_PREPROD_ID = os.getenv("BLOCKFROST_PREPROD_ID")
+BLOCKFROST_MAIN_ID = os.getenv("BLOCKFROST_MAIN_ID")
+
+if not BLOCKFROST_PREPROD_ID or not BLOCKFROST_MAIN_ID:
+    print("❌ WARNING: BLOCKFROST_PREPROD_ID or BLOCKFROST_MAIN_ID not found in environment variables")
+    print("   Please set both API keys in your environment")
     api = None
+    current_network = 'preprod'
 else:
-    api = BlockFrostApi(project_id=BLOCKFROST_API_KEY, base_url=ApiUrls.preprod.value)
+    current_network = 'preprod'  # Default to preprod
+    api = BlockFrostApi(project_id=BLOCKFROST_PREPROD_ID, base_url=ApiUrls.preprod.value)
+
+def switch_network(network):
+    """Switch between mainnet and preprod networks"""
+    global api, current_network
+    
+    if network == 'mainnet' and BLOCKFROST_MAIN_ID:
+        api = BlockFrostApi(project_id=BLOCKFROST_MAIN_ID, base_url=ApiUrls.mainnet.value)
+        current_network = 'mainnet'
+        print(f"✅ Switched to mainnet")
+        return True
+    elif network == 'preprod' and BLOCKFROST_PREPROD_ID:
+        api = BlockFrostApi(project_id=BLOCKFROST_PREPROD_ID, base_url=ApiUrls.preprod.value)
+        current_network = 'preprod'
+        print(f"✅ Switched to preprod")
+        return True
+    else:
+        print(f"❌ Failed to switch to {network} - API key not available")
+        return False
 
 # Determine sea creature type
 def classify_creature(ada_amount):
@@ -162,6 +184,41 @@ async def homepage(request: Request):
     except Exception as e:
         print(f"Error rendering homepage: {e}")
         return HTMLResponse(f"<h1>Error loading page: {e}</h1><p>Check server logs for details.</p>")
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring"""
+    return {"status": "healthy", "service": "cardano-aquarium"}
+
+@app.post("/switch-network")
+async def switch_network_endpoint(request: Request):
+    """Switch between mainnet and preprod networks"""
+    try:
+        body = await request.json()
+        network = body.get("network")
+        
+        if network not in ["mainnet", "preprod"]:
+            return {"error": "Invalid network. Must be 'mainnet' or 'preprod'"}
+        
+        success = switch_network(network)
+        if success:
+            return {
+                "success": True, 
+                "network": current_network,
+                "message": f"Switched to {current_network}"
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"Failed to switch to {network}"
+            }
+    except Exception as e:
+        return {"error": f"Network switch failed: {str(e)}"}
+
+@app.get("/current-network")
+async def get_current_network():
+    """Get the currently active network"""
+    return {"network": current_network}
 
 @app.get("/latest")
 async def latest_block():
