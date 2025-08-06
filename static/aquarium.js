@@ -760,6 +760,11 @@ function fetchSearchBlock() {
     console.log("*** BLOCK DATA RECEIVED ***", data);
     console.log("*** NUMBER OF CREATURES ***", data.creatures ? data.creatures.length : 0);
     
+    // Hide loading widget when block data is received
+    if (window.hideLoader) {
+      window.hideLoader();
+    }
+    
     if (data.error) {
       console.error("Block not found:", data.error);
       return;
@@ -911,18 +916,32 @@ function fetchSearchBlock() {
           x = Math.random() * (maxX - minX) + minX;
           y = maxY; // Bottom
         } else if (c.type === "octopus") {
-          // Octopus starts at bottom center
-          x = minX + (maxX - minX) / 2;
+          // Octopus starts staggered horizontally across the screen
+          const octopusIndex = currentCreatures.filter(creature => creature.data.type === "octopus").length;
+          const totalWidth = maxX - minX;
+          const staggerWidth = totalWidth / 4; // Divide screen into quarters
+          x = minX + (octopusIndex * staggerWidth) % totalWidth;
           y = maxY;
         } else if (c.type === "fish") {
-          // Fish start on left but staggered vertically
-          x = minX;
+          // Fish start on left but staggered both vertically and horizontally
           const fishIndex = currentCreatures.filter(creature => creature.data.type === "fish").length;
+          // Horizontal stagger: slight offset from left edge
+          x = minX + (fishIndex * 60) % 200; // Stagger up to 200px from left edge
+          // Vertical stagger: as before
           const staggerOffset = (fishIndex * 80) % (maxY - minY - 100); // Stagger every 80px, wrap around
           y = minY + 50 + staggerOffset; // Start 50px from top, then stagger
           y = Math.max(minY, Math.min(y, maxY)); // Ensure within bounds
+        } else if (c.type === "shark") {
+          // Sharks start staggered horizontally from the left
+          const sharkIndex = currentCreatures.filter(creature => creature.data.type === "shark").length;
+          x = minX + (sharkIndex * 150) % 300; // Stagger up to 300px from left edge
+        } else if (c.type === "whale") {
+          // Whales start staggered horizontally across wider area
+          const whaleIndex = currentCreatures.filter(creature => creature.data.type === "whale").length;
+          const totalWidth = maxX - minX;
+          x = minX + (whaleIndex * 200) % (totalWidth * 0.6); // Stagger across 60% of screen width
         } else {
-          // Shark, shrimp, whale start on the left
+          // Shrimp, tuna start on the left
           x = minX;
         }
         
@@ -1048,6 +1067,10 @@ function fetchSearchBlock() {
     }
   }).catch(error => {
     console.error("Error fetching block:", error);
+    // Hide loading widget on error
+    if (window.hideLoader) {
+      window.hideLoader();
+    }
   });
 }
 
@@ -1194,6 +1217,11 @@ async function toggleNetwork() {
   const button = document.getElementById('network-toggle');
   const targetNetwork = currentNetwork === 'preprod' ? 'mainnet' : 'preprod';
   
+  // Show loading widget for network switch
+  if (window.showLoader) {
+    window.showLoader(20, `Switching to ${targetNetwork.toUpperCase()}...`);
+  }
+  
   // Disable button during switch
   button.disabled = true;
   button.textContent = 'switching...';
@@ -1227,12 +1255,52 @@ async function toggleNetwork() {
       clearAllCreatures();
       
       console.log(`✅ Network switched to: ${currentNetwork}`);
+      
+      // Show loading widget again for fetching latest block
+      if (window.showLoader) {
+        window.showLoader(25, `Loading latest ${currentNetwork.toUpperCase()} block...`);
+      }
+      
+      // Fetch latest block on the new network
+      try {
+        const latestResponse = await fetch("/latest");
+        const latestData = await latestResponse.json();
+        
+        if (latestData.height) {
+          searchBlockHeight = latestData.height;
+          // Update the block input field if it exists
+          const blockInput = document.getElementById('block-input');
+          if (blockInput) {
+            blockInput.value = searchBlockHeight;
+          }
+          console.log(`📦 Fetching latest block on ${currentNetwork}: ${searchBlockHeight}`);
+          
+          // Fetch the block data
+          fetchSearchBlock();
+        } else {
+          // If we can't get latest block, hide loader
+          if (window.hideLoader) {
+            window.hideLoader();
+          }
+        }
+      } catch (blockError) {
+        console.error('❌ Error fetching latest block after network switch:', blockError);
+        // Hide loader on error
+        if (window.hideLoader) {
+          window.hideLoader();
+        }
+      }
     } else {
       throw new Error(result.error || 'Network switch failed');
     }
   } catch (error) {
     console.error('❌ Network switch failed:', error);
     showNetworkNotification('error', `Failed to switch to ${targetNetwork}`);
+    
+    // Hide the loading widget on error
+    if (window.hideLoader) {
+      window.hideLoader();
+    }
     
     // Reset button to current state
     button.textContent = currentNetwork;
