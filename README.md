@@ -1,4 +1,6 @@
-![Adaquarium](resources/images/title.png)
+<p align="center">
+  <img src="resources/images/title.png" alt="Adaquarium" width="50%">
+</p>
 # Adaquarium
 
 An interactive **Cardano blockchain visualizer** that turns on-chain activity into a living aquarium. Addresses area represented as animated sea life, making blockchain data approachable for **developers, educators, and newcomers**.
